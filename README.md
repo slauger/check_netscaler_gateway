@@ -14,6 +14,37 @@ This is a Nagios monitoring plugin for the Citrix NetScaler Gateway. The plugin 
 NetScaler Gateway OK - Admin Desktop; CAD Desktop; Calculator; HDX Desktop; HDX TS Desktop; Server 2016 Desktop; Windows 8 Desktop; XA 2012 Desktop;
 ```
 
+## Install
+
+Run the following commands to install all Perl dependencies (Monitoring::Plugin, LWP, JSON, HTTP::Cookies, Data::Dumper).
+
+### Enterprise Linux (CentOS, RedHat)
+
+```
+yum install perl-libwww-perl perl-JSON perl-LWP-Protocol-https perl-Monitoring-Plugin perl-HTTP-Cookies perl-Data-Dumper
+```
+
+### Debian and Ubuntu Linux
+
+```
+apt-get install libwww-perl liblwp-protocol-https-perl libjson-perl libmonitoring-plugin-perl
+```
+
+### Mac OS X
+
+The preinstalled Perl distribution is missing the JSON and Monitoring::Plugin libaries. The best way is to install them is trough the cpanminus tool. The cpanminus tool can be installed trough [brew](https://github.com/Homebrew/brew).
+
+```
+brew install cpanminus
+```
+
+Use the following commands to install the missing perl libaries.
+
+```
+sudo cpanm JSON
+sudo cpanm Monitoring::Plugin
+```
+
 ## Usage
 
 ```
