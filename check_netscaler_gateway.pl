@@ -29,13 +29,13 @@ use JSON;
 use HTTP::Cookies;
 use URI::Escape;
 use Data::Dumper;
-use Nagios::Plugin;
+use Monitoring::Plugin;
 
-my $plugin = Nagios::Plugin->new(
+my $plugin = Monitoring::Plugin->new(
 	plugin		=> 'check_netscaler_gateway',
 	shortname	=> 'NetScaler Gateway',
 	version		=> '0.0.1',
-	url			=> 'https://github.com/slauger/check_netscaler_gateway',
+	url		=> 'https://github.com/slauger/check_netscaler_gateway',
 	blurb		=> 'Nagios Plugin for Citrix NetScaler Gateway Appliance (VPX/MPX/SDX)',
 	usage		=> 'Usage: %s -H <hostname> [ -u <username> ] [ -p <password> ] -S <store>
 [ -v|--verbose ] [ -d|--debug ] [ -t <timeout> ]',
@@ -69,7 +69,7 @@ my @args = (
 	{
 		spec => 'store|S=s',
 		usage => '-S, --store=STRING',
-		desc => 'Name of the Store in Storefront',
+		desc => 'Name of the Store in Storefront (default: Store)',
 		default  => 'Store',
 		required => 0,
 	},
