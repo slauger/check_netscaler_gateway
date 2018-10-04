@@ -127,16 +127,9 @@ sub netscaler_gateway_client
 {
 	my $plugin = shift;
 
-        my $lwp = LWP::UserAgent->new(
-                env_proxy => 1,
-                keep_alive => 1,
-                timeout => $plugin->opts->timeout,
-                ssl_opts => {
-                        verify_hostname => 0,
-                        SSL_verify_mode => 0
-                },
-		#requests_redirectable => [ 'GET', 'HEAD', 'POST' ]
-        );
+	my $lwp = LWP::UserAgent->new(keep_alive => 1);
+        $lwp->timeout($plugin->opts->timeout);
+        $lwp->ssl_opts(verify_hostname => 0, SSL_verify_mode => 0);
 
 	my $cookie_jar = HTTP::Cookies->new;
 
@@ -154,10 +147,13 @@ sub netscaler_gateway_client
 	my $storeurl = $baseurl . '/Citrix/' . $plugin->opts->store . 'Web';
 
 	# Step 1: Login to NetScaler Gateway
-	$response = $lwp->post('https://' . $plugin->opts->hostname . '/cgi/login', [
-		login => $plugin->opts->username,
-		passwd => $plugin->opts->password,
-	]);
+	$response = $lwp->post( $baseurl . '/cgi/login', 
+		'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8', 
+		'Referer' => $baseurl . '/vpn/index.html', 
+		Content => [
+		  login => $plugin->opts->username, passwd => $plugin->opts->password 
+		] );
+
 
 	if ($plugin->opts->debug) {
 		print Dumper($response);
@@ -167,20 +163,18 @@ sub netscaler_gateway_client
                 $plugin->nagios_exit(CRITICAL, 'request to ' . $storeurl . '/cgi/login failed with HTTP ' . $response->code);
         } elsif (HTTP::Status::is_redirect($response->code)) {
 		if ($response->header('Location') ne '/cgi/setclient?wica') {
-			# this may happen if invalid credentials are given
+			# this may happen if invalid credentials are given or missing required headers
 			$plugin->nagios_exit(CRITICAL, 'request to ' . $storeurl . '/cgi/login redirected with HTTP ' . $response->code);
 		}
 	}
 
 	# Step 2: Request to setclient script 
-	$response = $lwp->post('https://' . $plugin->opts->hostname . '/cgi/setclient?wica', [
-		login => $plugin->opts->username,
-		passwd => $plugin->opts->password,
-	]);
+	$response = $lwp->post( $baseurl . $response->header('Location'), Content => [ $plugin->opts->username, passwd => $plugin->opts->password ]);
 			
 	if ($plugin->opts->debug) {
 		print Dumper($response);
 	}
+
 
         if (HTTP::Status::is_error($response->code)) {
                 $plugin->nagios_exit(CRITICAL, 'request to ' . $storeurl . '/cgi/setclient?wica failed with HTTP ' . $response->code);
@@ -189,11 +183,10 @@ sub netscaler_gateway_client
         }
 
 	# Step 3: Get CSRF Token & ASP.NET session ID
-	$request = HTTP::Request->new(POST => $storeurl . '/Home/Configuration');
-	$request->header('Accept', 'application/xml, text/xml, */*; q=0.01');
-	$request->header('Content-Length', '0');
-	$request->header('X-Citrix-IsUsingHTTPS', 'Yes');
-	$response = $lwp->request($request);
+	$response = $lwp->post( $storeurl . '/Home/Configuration', 
+		'Accept' => 'application/xml, text/xml, */*; q=0.01', 
+		'Content-Length' => 0,  
+		'X-Citrix-IsUsingHTTPS' => 'Yes' );
 
 	if ($plugin->opts->debug) {
 		print Dumper($response);
@@ -216,12 +209,11 @@ sub netscaler_gateway_client
 	}
 
 	# Step 4b: Get Authentication Methods from Storefront
-        $request = HTTP::Request->new(POST => $storeurl . '/Authentication/GetAuthMethods');
-        $request->header('Accept', 'application/xml, text/xml, */*; q=0.01');
-        $request->header('Content-Length', '0');
-        $request->header('X-Citrix-IsUsingHTTPS', 'Yes');
-	$request->header('Csrf-Token', $csrf_token);
-	$response = $lwp->request($request);
+	$response = $lwp->post( $storeurl . '/Authentication/GetAuthMethods', 
+		'Accept' => 'application/xml, text/xml, */*; q=0.01', 
+		'Content-Length' => 0,  
+		'X-Citrix-IsUsingHTTPS' => 'Yes',
+		'Csrf-Token' => $csrf_token );
 
 	if ($plugin->opts->debug) {
 		print Dumper($response);
@@ -234,12 +226,11 @@ sub netscaler_gateway_client
         }
 
 	# Step 5: Login to Storefront
-        $request = HTTP::Request->new(POST => $storeurl . '/GatewayAuth/Login');
-        $request->header('Accept', 'application/xml, text/xml, */*; q=0.01');
-        $request->header('Content-Length', '0');
-        $request->header('X-Citrix-IsUsingHTTPS', 'Yes');
-        $request->header('Csrf-Token', $csrf_token);
-        $response = $lwp->request($request);
+	$response = $lwp->post( $storeurl . '/GatewayAuth/Login', 
+		'Accept' => 'application/xml, text/xml, */*; q=0.01', 
+		'Content-Length' => 0,  
+		'X-Citrix-IsUsingHTTPS' => 'Yes',
+		'Csrf-Token' => $csrf_token );
 
 	if ($plugin->opts->debug) {
 	        print Dumper($response);
@@ -252,12 +243,11 @@ sub netscaler_gateway_client
         }
 
 	# Step 6: List Resources        
-	$request = HTTP::Request->new(POST => $storeurl . '/Resources/List');
-        $request->header('Accept', 'application/json, text/javascript, */*; q=0.01');
-        $request->header('X-Citrix-IsUsingHTTPS', 'Yes');
-        $request->header('Csrf-Token', $csrf_token);
-	$request->content('{ "format": "json", "resourceDetails": "Default" }');
-        $response = $lwp->request($request);
+	$response = $lwp->post( $storeurl . '/Resources/List', 
+		'Accept' => 'application/json, text/javascript, */*; q=0.01', 
+		'X-Citrix-IsUsingHTTPS' => 'Yes',
+		'Csrf-Token' => $csrf_token,
+		Content => [ '{ "format": "json", "resourceDetails": "Default" }' ]  );
 
 	if ($plugin->opts->debug) {
 		print Dumper($response);
@@ -277,8 +267,7 @@ sub netscaler_gateway_client
 	}
 	
 	# Step 7: Logout
-	$request = HTTP::Request->new(GET => $baseurl . '/cgi/logout');
-        $response = $lwp->request($request);
+	$response = $lwp->get($baseurl . '/cgi/logout');
 
 	if ($plugin->opts->debug) {
 		print Dumper($response);
