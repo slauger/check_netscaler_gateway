@@ -127,7 +127,7 @@ sub netscaler_gateway_client
 {
 	my $plugin = shift;
 
-	my $lwp = LWP::UserAgent->new(keep_alive => 1);
+	my $lwp = LWP::UserAgent->new(keep_alive => 1, env_proxy=>1);
         $lwp->timeout($plugin->opts->timeout);
         $lwp->ssl_opts(verify_hostname => 0, SSL_verify_mode => 0);
 
