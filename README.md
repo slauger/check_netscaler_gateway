@@ -97,6 +97,10 @@ password=password
 
 - [slauger](https://github.com/slauger)
 
+## Contributors
+
+- [Napsty](https://github.com/Napsty)
+
 ## Changelog
 
 See [CHANGELOG](CHANGELOG.md)
