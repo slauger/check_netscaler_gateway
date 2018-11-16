@@ -34,11 +34,11 @@ use Monitoring::Plugin;
 my $plugin = Monitoring::Plugin->new(
   plugin    => 'check_netscaler_gateway',
   shortname => 'NetScaler Gateway',
-  version   => '0.0.1',
+  version   => '0.0.2',
   url       => 'https://github.com/slauger/check_netscaler_gateway',
   blurb     => 'Nagios Plugin for Citrix NetScaler Gateway Appliance (VPX/MPX/SDX)',
   usage     => 'Usage: %s -H <hostname> [ -u <username> ] [ -p <password> ] -S <store>
-[ -v|--verbose ] [ -d|--debug ] [ -t <timeout> ]',
+[-w <warning>] [-c <critical>] [ -v|--verbose ] [ -d|--debug ] [ -t <timeout> ]',
   license => 'http://www.apache.org/licenses/LICENSE-2.0',
   extra   => '
 This is a Nagios monitoring plugin for the Citrix NetScaler Gateway. The plugin 
@@ -72,6 +72,18 @@ my @args = (
     usage    => '-S, --store=STRING',
     desc     => 'Name of the Store in Storefront (default: Store)',
     default  => 'Store',
+    required => 0,
+  },
+  {
+    spec => 'warning|w=i',
+    usage => '-w, --warning=INTEGER',
+    desc => 'Warning threshold for the numbers of found applications',
+    required => 0,
+  },
+  {
+    spec => 'critical|c=i',
+    usage => '-c, --critical=INTEGER',
+    desc => 'Critical threshold for the numbers of found applications',
     required => 0,
   },
   {
@@ -141,6 +153,7 @@ sub netscaler_gateway_client {
 
   my $request;
   my $response;
+  my @resources;
 
   my $baseurl  = 'https://' . $plugin->opts->hostname;
   my $storeurl = $baseurl . '/Citrix/' . $plugin->opts->store . 'Web';
@@ -282,7 +295,10 @@ sub netscaler_gateway_client {
 
   foreach my $resource ( @{$response} ) {
     $plugin->add_message( OK, $resource->{name} . ';' );
+    push @resources, ($resource->{name});
   }
+
+  my $resourcecnt = @{resources};
 
   # Step 7: Logout
   $response = $lwp->get( $baseurl . '/cgi/logout' );
@@ -295,7 +311,18 @@ sub netscaler_gateway_client {
     $plugin->add_message( WARNING, 'Logout failed with HTTP ' . $response->code );
   }
 
-  my ( $code, $message ) = $plugin->check_messages;
+  # Step 8: Threshold check (optional) and exit
+  if ($plugin->opts->critical && $resourcecnt < $plugin->opts->critical) {
+    $plugin->add_message(CRITICAL, 'Only ' . $resourcecnt . ' applications found, expected at least ' .$plugin->opts->critical);
+    my ($code, $message) = $plugin->check_messages;
+    $plugin->plugin_exit($code, $message);
+  } elsif ($plugin->opts->warning && $resourcecnt < $plugin->opts->warning) {
+    $plugin->add_message(WARNING, 'Only ' . $resourcecnt . ' applications found, expected at least ' .$plugin->opts->warning);
+    my ($code, $message) = $plugin->check_messages;
+    $plugin->plugin_exit(WARNING, $message);
+  } else {
+    my ($code, $message) = $plugin->check_messages;
+    $plugin->nagios_exit($code, $message);
+  }
 
-  $plugin->nagios_exit( $code, $message );
 }
