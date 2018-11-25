@@ -49,7 +49,7 @@ sudo cpanm Monitoring::Plugin
 
 ```
 Usage: check_netscaler_gateway -H <hostname> [ -u <username> ] [ -p <password> ] -S <store>
-[ -v|--verbose ] [ -d|--debug ] [ -t <timeout> ]
+[-w <warning>] [-c <critical>] [ -v|--verbose ] [ -d|--debug ] [ -t <timeout> ]
 
  -?, --usage
    Print usage information
@@ -67,7 +67,11 @@ Usage: check_netscaler_gateway -H <hostname> [ -u <username> ] [ -p <password> ]
  -p, --password=STRING
    Password for login username
  -S, --store=STRING
-   Name of the Store in Storefront
+   Name of the Store in Storefront (default: Store)
+ -w, --warning=INTEGER
+   Warning threshold for the numbers of found applications
+ -c, --critical=INTEGER
+   Critical threshold for the numbers of found applications
  -d, --debug
    Debug mode, print out every single HTTP request
  -t, --timeout=INTEGER
