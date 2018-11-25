@@ -1,3 +1,6 @@
+## 1.2.0 (2018-11-25)
+- Add threshold possibilities (#5)
+
 ## 1.1.0 (2018-10-23)
 - adjust lwp post commands (#2)
 - added Icinga2 command definition example (#4)
