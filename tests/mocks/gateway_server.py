@@ -144,12 +144,9 @@ class MockGatewayServer:
                 response.headers["Location"] = "/logon/LogonPoint/tmindex.html"
                 return response
             response = Response(status=302)
-            # 13.1-63.x hardening: a bare POST without the login page cookies
-            # or without an Origin header fails like a wrong password
-            browser_like = bool(request.cookies.get("NSC_TASS")) and bool(
-                request.headers.get("Origin")
-            )
-            if browser_like and self._credentials_valid():
+            # 13.1-63.x hardening, confirmed via issue #7: a POST without an
+            # Origin header fails like a wrong password
+            if request.headers.get("Origin") and self._credentials_valid():
                 response.headers["Location"] = "/cgi/setclient?wica"
                 response.set_cookie("NSC_AAAC", AAA_COOKIE)
             else:

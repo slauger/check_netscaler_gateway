@@ -51,7 +51,7 @@ check_netscaler_gateway -H <hostname> -u <username> -p <password> [-S <store>]
 
 ### Authentication flows
 
-The plugin emulates a real browser session: it loads the login page first and sends an `Origin` header with the login request. Firmware builds since 13.1-63.x reject bare `POST /cgi/login` requests without this (redirect to `/vpn/index.html` with `NSC_VPNERR=4001`), which is what broke the Perl version of this plugin. Gateways using the RfWebUI theme speak the nFactor protocol instead of the classic `/cgi/login` flow; the plugin detects this automatically, use `--auth-mode` to pin a flow explicitly. Multi-factor setups (OTP, EULA, more than one factor) are not supported and are reported as UNKNOWN.
+The plugin emulates a real browser session: it loads the login page first and sends an `Origin` header with the login request. Firmware builds since 13.1-63.x reject `POST /cgi/login` requests without an `Origin` header (redirect to `/vpn/index.html` with `NSC_VPNERR=4001`), which is what broke the Perl version of this plugin. Gateways using the RfWebUI theme speak the nFactor protocol instead of the classic `/cgi/login` flow; the plugin detects this automatically, use `--auth-mode` to pin a flow explicitly. Multi-factor setups (OTP, EULA, more than one factor) are not supported and are reported as UNKNOWN.
 
 ## Migration from v1.x (Perl)
 

@@ -4,10 +4,10 @@ Authentication flows against the NetScaler Gateway vServer
 Two flows exist in the wild:
 
 - classic: gateways with the classic portal theme answer POST /cgi/login
-  with a 302 to /cgi/setclient?wica. Builds since 13.1-63.x reject a bare
-  POST without the cookies from a prior visit of the login page and an
-  Origin header (302 to /vpn/index.html with NSC_VPNERR=4001, issue #7),
-  so the flow loads /vpn/index.html first like a real browser.
+  with a 302 to /cgi/setclient?wica. Builds since 13.1-63.x reject a POST
+  without an Origin header (302 to /vpn/index.html with NSC_VPNERR=4001,
+  confirmed in issue #7), so the flow sends one and additionally loads
+  /vpn/index.html first like a real browser.
 - nfactor: gateways with the RfWebUI theme use the nFactor protocol under
   /nf/auth/ and redirect to the logon page (/logon/LogonPoint/...)
 """
@@ -90,8 +90,8 @@ def _browser_preamble(session: GatewaySession) -> requests.Response:
     """
     Load the login page like a real browser before posting credentials.
 
-    Newer 13.1 builds reject a bare POST /cgi/login without the session
-    cookies handed out here (302 to /vpn/index.html, NSC_VPNERR=4001).
+    Also serves as the auto-detect probe: RfWebUI gateways redirect the
+    login page to /logon/LogonPoint.
     """
     return session.get(
         f"{session.base_url}/vpn/index.html",
