@@ -3,11 +3,13 @@ Authentication flows against the NetScaler Gateway vServer
 
 Two flows exist in the wild:
 
-- classic: firmware with classic authentication policies answers
-  POST /cgi/login with a 302 to /cgi/setclient?wica
-- nfactor: firmware 13.1+ (classic policies removed) uses the nFactor
-  protocol under /nf/auth/ and answers POST /cgi/login with a redirect
-  to the RfWebUI logon page (/logon/LogonPoint/...)
+- classic: gateways with the classic portal theme answer POST /cgi/login
+  with a 302 to /cgi/setclient?wica. Builds since 13.1-63.x reject a bare
+  POST without the cookies from a prior visit of the login page and an
+  Origin header (302 to /vpn/index.html with NSC_VPNERR=4001, issue #7),
+  so the flow loads /vpn/index.html first like a real browser.
+- nfactor: gateways with the RfWebUI theme use the nFactor protocol under
+  /nf/auth/ and redirect to the logon page (/logon/LogonPoint/...)
 """
 
 import xml.etree.ElementTree as ET
@@ -28,6 +30,8 @@ AUTH_MODE_NFACTOR = "nfactor"
 AUTH_MODES = [AUTH_MODE_AUTO, AUTH_MODE_CLASSIC, AUTH_MODE_NFACTOR]
 
 SETCLIENT_LOCATION = "/cgi/setclient?wica"
+LOGON_POINT_MARKER = "/logon/LogonPoint"
+REDIRECT_CODES = (301, 302, 303, 307)
 
 
 def login(session: GatewaySession, auth_mode: str = AUTH_MODE_AUTO) -> str:
@@ -37,24 +41,34 @@ def login(session: GatewaySession, auth_mode: str = AUTH_MODE_AUTO) -> str:
     Returns:
         The flow that was used ('classic' or 'nfactor')
     """
-    if auth_mode == AUTH_MODE_CLASSIC:
-        response = _post_cgi_login(session)
-        _classic_login(session, response)
-        return AUTH_MODE_CLASSIC
-
     if auth_mode == AUTH_MODE_NFACTOR:
         _nfactor_login(session)
         return AUTH_MODE_NFACTOR
 
-    # auto: a single POST /cgi/login decides. Classic firmware answers with
-    # a 302 to /cgi/setclient?wica; nFactor firmware redirects to the
-    # RfWebUI logon page instead.
-    response = _post_cgi_login(session)
-    location = response.headers.get("Location", "")
-    if response.status_code in (301, 302, 303, 307) and location != SETCLIENT_LOCATION:
+    preamble = _browser_preamble(session)
+
+    # auto: an RfWebUI gateway redirects the login page to /logon/LogonPoint,
+    # so the flow is decided before any credentials are sent
+    location = preamble.headers.get("Location", "")
+    if (
+        auth_mode == AUTH_MODE_AUTO
+        and preamble.status_code in REDIRECT_CODES
+        and LOGON_POINT_MARKER in location
+    ):
         _nfactor_login(session)
         return AUTH_MODE_NFACTOR
-    _classic_login(session, response)
+
+    response = _post_cgi_login(session)
+    location = response.headers.get("Location", "")
+    if (
+        auth_mode == AUTH_MODE_AUTO
+        and response.status_code in REDIRECT_CODES
+        and LOGON_POINT_MARKER in location
+    ):
+        _nfactor_login(session)
+        return AUTH_MODE_NFACTOR
+
+    _finish_classic_login(session, response)
     return AUTH_MODE_CLASSIC
 
 
@@ -72,13 +86,29 @@ def logout(session: GatewaySession) -> bool:
     return response.status_code < 400
 
 
+def _browser_preamble(session: GatewaySession) -> requests.Response:
+    """
+    Load the login page like a real browser before posting credentials.
+
+    Newer 13.1 builds reject a bare POST /cgi/login without the session
+    cookies handed out here (302 to /vpn/index.html, NSC_VPNERR=4001).
+    """
+    return session.get(
+        f"{session.base_url}/vpn/index.html",
+        headers={
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+    )
+
+
 def _post_cgi_login(session: GatewaySession) -> requests.Response:
-    """Step 1 of the classic flow, also used as the auto-detect probe"""
+    """Post the credentials to /cgi/login"""
     response = session.post(
         f"{session.base_url}/cgi/login",
         headers={
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Referer": f"{session.base_url}/vpn/index.html",
+            "Origin": session.base_url,
         },
         data={
             "login": session.username,
@@ -94,15 +124,17 @@ def _post_cgi_login(session: GatewaySession) -> requests.Response:
     return response
 
 
-def _classic_login(session: GatewaySession, login_response: requests.Response) -> None:
+def _finish_classic_login(session: GatewaySession, login_response: requests.Response) -> None:
     """Classic flow: expect the 302 to /cgi/setclient?wica, then call it"""
     location = login_response.headers.get("Location", "")
-    if login_response.status_code in (301, 302, 303, 307):
+    if login_response.status_code in REDIRECT_CODES:
         if location != SETCLIENT_LOCATION:
             # happens with invalid credentials or missing required headers
+            error_code = session.cookie("NSC_VPNERR")
+            hint = f", gateway error code {error_code}" if error_code else ""
             raise GatewayAuthenticationError(
                 f"request to {session.base_url}/cgi/login redirected to '{location}' "
-                f"instead of '{SETCLIENT_LOCATION}' (check credentials and auth-mode)"
+                f"instead of '{SETCLIENT_LOCATION}' (check credentials and auth-mode{hint})"
             )
 
     response = session.post(f"{session.base_url}{location or SETCLIENT_LOCATION}")

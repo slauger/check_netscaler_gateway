@@ -129,6 +129,14 @@ class MockGatewayServer:
     def _setup_routes(self):
         app = self.app
 
+        @app.route("/vpn/index.html", methods=["GET"])
+        def vpn_index():
+            if self.mode == MODE_NFACTOR:
+                return Response(status=302, headers={"Location": "/logon/LogonPoint/tmindex.html"})
+            response = Response("<html>login page</html>", status=200)
+            response.set_cookie("NSC_TASS", "/")
+            return response
+
         @app.route("/cgi/login", methods=["POST"])
         def cgi_login():
             if self.mode == MODE_NFACTOR:
@@ -136,11 +144,17 @@ class MockGatewayServer:
                 response.headers["Location"] = "/logon/LogonPoint/tmindex.html"
                 return response
             response = Response(status=302)
-            if self._credentials_valid():
+            # 13.1-63.x hardening: a bare POST without the login page cookies
+            # or without an Origin header fails like a wrong password
+            browser_like = bool(request.cookies.get("NSC_TASS")) and bool(
+                request.headers.get("Origin")
+            )
+            if browser_like and self._credentials_valid():
                 response.headers["Location"] = "/cgi/setclient?wica"
                 response.set_cookie("NSC_AAAC", AAA_COOKIE)
             else:
                 response.headers["Location"] = "/vpn/index.html"
+                response.set_cookie("NSC_VPNERR", "4001")
             return response
 
         @app.route("/cgi/setclient", methods=["POST"])

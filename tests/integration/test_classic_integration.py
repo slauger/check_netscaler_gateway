@@ -3,6 +3,7 @@ Integration tests for the classic authentication flow
 """
 
 import pytest
+import requests
 
 from check_netscaler_gateway.check import run_check
 from check_netscaler_gateway.client.exceptions import (
@@ -44,12 +45,24 @@ class TestClassicFlow:
         with pytest.raises(GatewayAuthenticationError, match="/vpn/index.html"):
             run_check(session, auth_mode="classic")
 
-    def test_wrong_credentials_auto_mode_hits_nfactor_404(self, mock_classic_server):
-        # in auto mode a failed classic login is indistinguishable from an
-        # nFactor gateway until /nf/auth answers 404
+    def test_wrong_credentials_reports_gateway_error_code(self, mock_classic_server):
         session = make_session(mock_classic_server, password="wrong")
-        with pytest.raises(GatewayAuthenticationError, match="404"):
+        with pytest.raises(GatewayAuthenticationError, match="gateway error code 4001"):
             run_check(session)
+
+    def test_bare_login_post_is_rejected(self, mock_classic_server):
+        # the old Perl plugin failed on 13.1-63.x exactly like this: no login
+        # page cookies, no Origin header (issue #7)
+        response = requests.post(
+            f"{mock_classic_server.get_url()}/cgi/login",
+            data={
+                "login": mock_classic_server.username,
+                "passwd": mock_classic_server.password,
+            },
+            allow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers["Location"] == "/vpn/index.html"
 
     def test_warning_threshold(self, mock_classic_server):
         result = run_check(make_session(mock_classic_server), warning=10)
