@@ -1,5 +1,6 @@
-## 1.2.1 (2026-09-10)
+## 1.2.1 (2026-09-11)
 - Send Origin header on /cgi/login, required since NetScaler 13.1 build 63.x (#7)
+- Send a browser User-Agent instead of libwww-perl, which newer builds may filter (#7)
 - Fixed wrong URLs in the error messages of the login steps
 
 ## 1.2.0 (2018-11-25)
