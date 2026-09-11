@@ -17,6 +17,14 @@ from check_netscaler_gateway.client.exceptions import (
 
 MASK = "********"
 
+# Some gateways filter tool user agents (libwww-perl, python-requests) via
+# bot management and answer with a generic login failure (issue #7), so
+# look like a browser
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+)
+
 # Patterns for values that must never show up in debug output
 _BODY_SECRET_RE = re.compile(r"(passwd=)[^&]*")
 _SECRET_HEADERS = {"cookie", "set-cookie", "authorization"}
@@ -74,6 +82,7 @@ class GatewaySession:
         self.store_url = f"{self.base_url}/Citrix/{store}Web"
 
         self.session = requests.Session()
+        self.session.headers["User-Agent"] = USER_AGENT
 
     def request(self, method: str, url: str, **kwargs) -> requests.Response:
         """

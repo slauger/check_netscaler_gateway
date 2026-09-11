@@ -145,8 +145,11 @@ class MockGatewayServer:
                 return response
             response = Response(status=302)
             # 13.1-63.x hardening, confirmed via issue #7: a POST without an
-            # Origin header fails like a wrong password
-            if request.headers.get("Origin") and self._credentials_valid():
+            # Origin header or with a tool user agent fails like a wrong
+            # password
+            user_agent = request.headers.get("User-Agent", "")
+            tool_agent = "libwww-perl" in user_agent or "python-requests" in user_agent
+            if request.headers.get("Origin") and not tool_agent and self._credentials_valid():
                 response.headers["Location"] = "/cgi/setclient?wica"
                 response.set_cookie("NSC_AAAC", AAA_COOKIE)
             else:
