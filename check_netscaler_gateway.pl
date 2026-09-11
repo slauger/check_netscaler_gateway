@@ -34,7 +34,7 @@ use Monitoring::Plugin;
 my $plugin = Monitoring::Plugin->new(
   plugin    => 'check_netscaler_gateway',
   shortname => 'NetScaler Gateway',
-  version   => 'v1.2.0',
+  version   => 'v1.2.1',
   url       => 'https://github.com/slauger/check_netscaler_gateway',
   blurb     => 'Nagios Plugin for Citrix NetScaler Gateway Appliance (VPX/MPX/SDX)',
   usage     => 'Usage: %s -H <hostname> [ -u <username> ] [ -p <password> ] -S <store>
@@ -142,6 +142,10 @@ sub netscaler_gateway_client {
   $lwp->timeout( $plugin->opts->timeout );
   $lwp->ssl_opts( verify_hostname => 0, SSL_verify_mode => 0 );
 
+  # some gateways filter tool user agents like libwww-perl via bot management
+  # and answer with a generic login failure, see issue #7
+  $lwp->agent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36');
+
   my $cookie_jar = HTTP::Cookies->new;
 
   $lwp->cookie_jar($cookie_jar);
@@ -159,10 +163,13 @@ sub netscaler_gateway_client {
   my $storeurl = $baseurl . '/Citrix/' . $plugin->opts->store . 'Web';
 
   # Step 1: Login to NetScaler Gateway
+  # NetScaler 13.1 build 63.x and later reject the login without an Origin
+  # header (302 to /vpn/index.html with NSC_VPNERR=4001), see issue #7
   $response = $lwp->post(
     $baseurl . '/cgi/login',
     'Accept'  => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
     'Referer' => $baseurl . '/vpn/index.html',
+    'Origin'  => $baseurl,
     Content   => [
       login  => $plugin->opts->username,
       passwd => $plugin->opts->password
@@ -175,13 +182,14 @@ sub netscaler_gateway_client {
   }
 
   if ( HTTP::Status::is_error( $response->code ) ) {
-    $plugin->nagios_exit( CRITICAL, 'request to ' . $storeurl . '/cgi/login failed with HTTP ' . $response->code );
+    $plugin->nagios_exit( CRITICAL, 'request to ' . $baseurl . '/cgi/login failed with HTTP ' . $response->code );
   }
   elsif ( HTTP::Status::is_redirect( $response->code ) ) {
     if ( $response->header('Location') ne '/cgi/setclient?wica' ) {
 
       # this may happen if invalid credentials are given or missing required headers
-      $plugin->nagios_exit( CRITICAL, 'request to ' . $storeurl . '/cgi/login redirected with HTTP ' . $response->code );
+      $plugin->nagios_exit( CRITICAL,
+        'request to ' . $baseurl . '/cgi/login redirected to ' . $response->header('Location') . ' with HTTP ' . $response->code );
     }
   }
 
@@ -194,10 +202,10 @@ sub netscaler_gateway_client {
 
 
   if ( HTTP::Status::is_error( $response->code ) ) {
-    $plugin->nagios_exit( CRITICAL, 'request to ' . $storeurl . '/cgi/setclient?wica failed with HTTP ' . $response->code );
+    $plugin->nagios_exit( CRITICAL, 'request to ' . $baseurl . '/cgi/setclient?wica failed with HTTP ' . $response->code );
   }
   elsif ( HTTP::Status::is_redirect( $response->code ) ) {
-    $plugin->nagios_exit( CRITICAL, 'request to ' . $storeurl . '/cgi/setclient?wica redirected with HTTP ' . $response->code );
+    $plugin->nagios_exit( CRITICAL, 'request to ' . $baseurl . '/cgi/setclient?wica redirected with HTTP ' . $response->code );
   }
 
   # Step 3: Get CSRF Token & ASP.NET session ID
