@@ -1,110 +1,81 @@
-# check_netscaler_gateway Nagios Plugin
+# check_netscaler_gateway
 
-This is a Nagios monitoring plugin for the Citrix NetScaler Gateway. The plugin emulates a full login proccess on a NetScaler Gateway vServer and checks if there are any resources available.
+[![CI](https://github.com/slauger/check_netscaler_gateway/actions/workflows/lint-and-type-check.yml/badge.svg)](https://github.com/slauger/check_netscaler_gateway/actions/workflows/lint-and-type-check.yml)
+[![PyPI version](https://img.shields.io/pypi/v/check_netscaler_gateway)](https://pypi.org/project/check_netscaler_gateway/)
+[![Python versions](https://img.shields.io/pypi/pyversions/check_netscaler_gateway)](https://pypi.org/project/check_netscaler_gateway/)
+[![License](https://img.shields.io/github/license/slauger/check_netscaler_gateway)](LICENSE-2.0.txt)
 
-```
--bash# ./check_netscaler_gateway.pl -H citrix.example.com -u monitoring -p password -S Lab -v
-** POST https://citrix.example.com/cgi/login ==> 302 Object Moved
-** POST https://citrix.example.com/cgi/setclient?wica ==> 200 OK
-** POST https://citrix.example.com/Citrix/LabWeb/Home/Configuration ==> 200 OK
-** POST https://citrix.example.com/Citrix/LabWeb/Authentication/GetAuthMethods ==> 200 OK
-** POST https://citrix.example.com/Citrix/LabWeb/GatewayAuth/Login ==> 200 OK
-** POST https://citrix.example.com/Citrix/LabWeb/Resources/List ==> 200 OK
-** GET https://citrix.example.com/cgi/logout ==> 200 OK
-NetScaler Gateway OK - Admin Desktop; CAD Desktop; Calculator; HDX Desktop; HDX TS Desktop; Server 2016 Desktop; Windows 8 Desktop; XA 2012 Desktop;
-```
+Nagios/Icinga monitoring plugin for Citrix NetScaler Gateway. The plugin emulates a full login process on a NetScaler Gateway vServer, authenticates against StoreFront through the gateway and checks if there are any resources (published applications and desktops) available for the monitoring user.
 
-## Install
+## Features
 
-Run the following commands to install all Perl dependencies (Monitoring::Plugin, LWP, JSON, HTTP::Cookies, Data::Dumper).
+- 🔑 Simulates a complete end-user login through the gateway, not just a TCP or HTTP check
+- 🔀 Supports both authentication flows: classic (`/cgi/login`) and nFactor (firmware 13.1 and later) with automatic detection
+- 📦 Lists the published resources and checks minimum thresholds (`-w`/`-c`)
+- 📊 Emits performance data (number of available resources)
+- 🐍 Pure Python with a single runtime dependency (`requests`), also available as standalone binaries
+- 🛠️ Debug mode prints all HTTP requests and responses with credentials masked
 
-### Enterprise Linux (CentOS, RedHat)
+## Quick Start
 
-```
-yum install perl-libwww-perl perl-JSON perl-LWP-Protocol-https perl-Monitoring-Plugin perl-HTTP-Cookies perl-Data-Dumper
-```
+```bash
+pip install check_netscaler_gateway
 
-### Debian and Ubuntu Linux
-
-```
-apt-get install libwww-perl liblwp-protocol-https-perl libjson-perl libmonitoring-plugin-perl
-```
-
-### Mac OS X
-
-The preinstalled Perl distribution is missing the JSON and Monitoring::Plugin libaries. The best way is to install them is trough the cpanminus tool. The cpanminus tool can be installed trough [brew](https://github.com/Homebrew/brew).
-
-```
-brew install cpanminus
-```
-
-Use the following commands to install the missing perl libaries.
-
-```
-sudo cpanm JSON
-sudo cpanm Monitoring::Plugin
+check_netscaler_gateway -H citrix.example.com -u monitoring -p password -S Store
+NetScaler Gateway OK - Admin Desktop; CAD Desktop; Calculator; HDX Desktop; | 'resources'=4;;;0;
 ```
 
 ## Usage
 
 ```
-Usage: check_netscaler_gateway -H <hostname> [ -u <username> ] [ -p <password> ] -S <store>
-[-w <warning>] [-c <critical>] [ -v|--verbose ] [ -d|--debug ] [ -t <timeout> ]
-
- -?, --usage
-   Print usage information
- -h, --help
-   Print detailed help screen
- -V, --version
-   Print version information
- --extra-opts=[section][@file]
-   Read options from an ini file. See https://www.monitoring-plugins.org/doc/extra-opts.html
-   for usage and examples.
- -H, --hostname=STRING
-   Hostname of the NetScaler appliance to connect to
- -u, --username=STRING
-   Username to log into box as
- -p, --password=STRING
-   Password for login username
- -S, --store=STRING
-   Name of the Store in Storefront (default: Store)
- -w, --warning=INTEGER
-   Warning threshold for the numbers of found applications
- -c, --critical=INTEGER
-   Critical threshold for the numbers of found applications
- -d, --debug
-   Debug mode, print out every single HTTP request
- -t, --timeout=INTEGER
-   Seconds before plugin times out (default: 15)
- -v, --verbose
-   Show details for command-line debugging (can repeat up to 3 times)
+check_netscaler_gateway -H <hostname> -u <username> -p <password> [-S <store>]
+                        [-w <warning>] [-c <critical>] [-t <timeout>]
+                        [--auth-mode {auto,classic,nfactor}]
+                        [--verify] [--ca-file <path>] [-v] [-d]
 ```
 
-## Configuration File
+| Option | Description |
+|--------|-------------|
+| `-H, --hostname` | Hostname of the NetScaler Gateway vServer (env: `NETSCALER_GATEWAY_HOST`) |
+| `-u, --username` | Username for the login simulation (env: `NETSCALER_GATEWAY_USER`) |
+| `-p, --password` | Password for the login username (env: `NETSCALER_GATEWAY_PASS`) |
+| `-S, --store` | Name of the store in StoreFront (default: `Store`) |
+| `-w, --warning` | Warning threshold: minimum number of expected applications |
+| `-c, --critical` | Critical threshold: minimum number of expected applications |
+| `-t, --timeout` | Request timeout in seconds (default: 15) |
+| `--auth-mode` | Authentication flow: `auto` (default), `classic` or `nfactor` |
+| `--verify` | Verify TLS certificates (disabled by default, like v1.x) |
+| `--ca-file` | Path to a CA bundle for TLS verification |
+| `-v, --verbose` | Print one line per HTTP request to stderr |
+| `-d, --debug` | Print all HTTP requests and responses to stderr (credentials masked) |
 
-The plugin uses the Monitoring::Plugin Libary, so you can use --extra-opts and seperate the login crendetials from your nagios configuration.
+### Authentication flows
 
+The plugin emulates a real browser session: it loads the login page first and sends an `Origin` header with the login request. Firmware builds since 13.1-63.x reject `POST /cgi/login` requests without an `Origin` header (redirect to `/vpn/index.html` with `NSC_VPNERR=4001`), which is what broke the Perl version of this plugin. Gateways using the RfWebUI theme speak the nFactor protocol instead of the classic `/cgi/login` flow; the plugin detects this automatically, use `--auth-mode` to pin a flow explicitly. Multi-factor setups (OTP, EULA, more than one factor) are not supported and are reported as UNKNOWN.
+
+## Migration from v1.x (Perl)
+
+The command line options `-H`, `-u`, `-p`, `-S`, `-w`, `-c`, `-t`, `-v` and `-d` are compatible, existing Nagios and Icinga command definitions keep working after replacing `check_netscaler_gateway.pl` with the new binary or console script. TLS certificate verification stays disabled by default; enable it with `--verify` or `--ca-file`.
+
+## Icinga 2
+
+See [examples/icinga2/check_netscaler_gateway.conf](examples/icinga2/check_netscaler_gateway.conf) for a CheckCommand definition.
+
+## Development
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+make install
+make ci
 ```
-define command {
-  command_name check_netscaler_gateway
-  command_line $USER5$/3rdparty/check_netscaler_gateway/check_netscaler_gateway.pl -H $HOSTADDRESS$ --extra-opts=netscaler@$USER11$/plugins.ini -S $ARG1$
-}
+
+The test suite runs against a bundled mock gateway server (Flask) that implements both authentication flows, no real NetScaler required:
+
+```bash
+python -m tests.mocks.gateway_server --port 8080 --mode nfactor
 ```
 
-```
-[netscaler]
-username=nagios
-password=password
-```
+## License
 
-## Authors
-
-- [slauger](https://github.com/slauger)
-
-## Contributors
-
-- [Napsty](https://github.com/Napsty)
-
-## Changelog
-
-See [CHANGELOG](CHANGELOG.md)
+Licensed under the [Apache License, Version 2.0](LICENSE-2.0.txt).
