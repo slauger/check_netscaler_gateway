@@ -34,7 +34,7 @@ class TestParseRequirements:
     def test_username_password_factor(self):
         state_context, postback = gateway._parse_requirements(REQUIREMENTS_XML)
         assert state_context == STATE_CONTEXT
-        assert postback == "/nf/auth/doAuthentication.do"
+        assert postback == "/p/u/doAuthentication.do"
 
     def test_unsupported_factor(self):
         with pytest.raises(UnsupportedAuthFlowError, match="passcode"):

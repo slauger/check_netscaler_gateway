@@ -35,8 +35,8 @@ REQUIREMENTS_XML = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Result>more-info</Result>
 <StateContext>{STATE_CONTEXT}</StateContext>
 <AuthenticationRequirements>
-<PostBack>/nf/auth/doAuthentication.do</PostBack>
-<CancelPostBack>/nf/auth/stopAuthentication.do</CancelPostBack>
+<PostBack>/p/u/doAuthentication.do</PostBack>
+<CancelPostBack>/p/u/stopAuthentication.do</CancelPostBack>
 <Requirements>
 <Requirement><Credential><ID>login</ID><Type>username</Type></Credential></Requirement>
 <Requirement><Credential><ID>passwd</ID><Type>password</Type></Credential></Requirement>
@@ -61,7 +61,7 @@ MORE_INFO_XML = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Result>more-info</Result>
 <StateContext>{STATE_CONTEXT}</StateContext>
 <AuthenticationRequirements>
-<PostBack>/nf/auth/doAuthentication.do</PostBack>
+<PostBack>/p/u/doAuthentication.do</PostBack>
 <Requirements>
 <Requirement><Credential><ID>otp</ID><Type>passcode</Type></Credential></Requirement>
 </Requirements>
@@ -74,7 +74,7 @@ FAILURE_XML = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Result>more-info</Result>
 <StateContext>{STATE_CONTEXT}</StateContext>
 <AuthenticationRequirements>
-<PostBack>/nf/auth/doAuthentication.do</PostBack>
+<PostBack>/p/u/doAuthentication.do</PostBack>
 <Requirements>
 <Requirement>
 <Credential><Type>none</Type></Credential>
@@ -110,6 +110,10 @@ class MockGatewayServer:
         self.multifactor = False
         self.broken_resources_json = False
         self.resources: Optional[list] = None
+        # some nFactor gateways do not redirect /vpn/index.html to the logon
+        # point; set this False to force auto detection through the /cgi/login
+        # fallback instead of the preamble redirect
+        self.nfactor_vpn_redirect = True
 
         self.app = Flask(__name__)
         self.fixtures_dir = Path(__file__).parent / "fixtures"
@@ -131,22 +135,29 @@ class MockGatewayServer:
 
         @app.route("/vpn/index.html", methods=["GET"])
         def vpn_index():
-            if self.mode == MODE_NFACTOR:
-                return Response(status=302, headers={"Location": "/logon/LogonPoint/tmindex.html"})
+            if self.mode == MODE_NFACTOR and self.nfactor_vpn_redirect:
+                return Response(status=302, headers={"Location": "/logon/LogonPoint/index.html"})
             response = Response("<html>login page</html>", status=200)
+            response.set_cookie("NSC_TASS", "/")
+            return response
+
+        @app.route("/logon/LogonPoint/index.html", methods=["GET"])
+        def logon_point():
+            response = Response("<html>RfWebUI logon page</html>", status=200)
             response.set_cookie("NSC_TASS", "/")
             return response
 
         @app.route("/cgi/login", methods=["POST"])
         def cgi_login():
-            if self.mode == MODE_NFACTOR:
-                response = Response(status=302)
-                response.headers["Location"] = "/logon/LogonPoint/tmindex.html"
-                return response
             response = Response(status=302)
-            # 13.1-63.x hardening, confirmed via issue #7: a POST without an
-            # Origin header or with a tool user agent fails like a wrong
-            # password
+            # On RfWebUI gateways /cgi/login is dead and bounces to
+            # /vpn/index.html with NSC_VPNERR=4001 (issue #7)
+            if self.mode == MODE_NFACTOR:
+                response.headers["Location"] = "/vpn/index.html"
+                response.set_cookie("NSC_VPNERR", "4001")
+                return response
+            # classic 13.1-63.x hardening: a POST without an Origin header or
+            # with a tool user agent fails like a wrong password
             user_agent = request.headers.get("User-Agent", "")
             tool_agent = "libwww-perl" in user_agent or "python-requests" in user_agent
             if request.headers.get("Origin") and not tool_agent and self._credentials_valid():
@@ -169,26 +180,39 @@ class MockGatewayServer:
                 return Response(status=500)
             return Response("", status=200)
 
-        @app.route("/nf/auth/getAuthenticationRequirements.do", methods=["POST"])
+        @app.route("/p/u/getAuthenticationRequirements.do", methods=["POST"])
         def nf_requirements():
             if self.mode != MODE_NFACTOR:
                 return Response(status=404)
             body = REQUIREMENTS_OTP_XML if self.multifactor == "first-factor" else REQUIREMENTS_XML
-            return Response(body, status=200, mimetype="application/xml")
+            return Response(
+                body, status=200, mimetype="application/vnd.citrix.authenticateresponse-1+xml"
+            )
 
-        @app.route("/nf/auth/doAuthentication.do", methods=["POST"])
+        @app.route("/p/u/doAuthentication.do", methods=["POST"])
         def nf_authenticate():
             if self.mode != MODE_NFACTOR:
                 return Response(status=404)
+            ct = "application/vnd.citrix.authenticateresponse-1+xml"
             if request.form.get("StateContext") != STATE_CONTEXT:
-                return Response(FAILURE_XML, status=200, mimetype="application/xml")
+                return Response(FAILURE_XML, status=200, mimetype=ct)
             if not self._credentials_valid():
-                return Response(FAILURE_XML, status=200, mimetype="application/xml")
+                return Response(FAILURE_XML, status=200, mimetype=ct)
             if self.multifactor:
-                return Response(MORE_INFO_XML, status=200, mimetype="application/xml")
-            response = Response(SUCCESS_XML, status=200, mimetype="application/xml")
+                return Response(MORE_INFO_XML, status=200, mimetype=ct)
+            response = Response(SUCCESS_XML, status=200, mimetype=ct)
             response.set_cookie("NSC_AAAC", AAA_COOKIE)
             return response
+
+        @app.route("/p/u/setClient.do", methods=["POST"])
+        def nf_setclient():
+            if self.mode != MODE_NFACTOR or not self._authenticated():
+                return Response(status=403)
+            return Response(
+                SUCCESS_XML,
+                status=200,
+                mimetype="application/vnd.citrix.authenticateresponse-1+xml",
+            )
 
         @app.route("/Citrix/<store>Web/Home/Configuration", methods=["POST"])
         def home_configuration(store):

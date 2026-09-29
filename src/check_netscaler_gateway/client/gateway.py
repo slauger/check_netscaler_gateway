@@ -5,11 +5,14 @@ Two flows exist in the wild:
 
 - classic: gateways with the classic portal theme answer POST /cgi/login
   with a 302 to /cgi/setclient?wica. Builds since 13.1-63.x reject a POST
-  without an Origin header (302 to /vpn/index.html with NSC_VPNERR=4001,
-  confirmed in issue #7), so the flow sends one and additionally loads
-  /vpn/index.html first like a real browser.
-- nfactor: gateways with the RfWebUI theme use the nFactor protocol under
-  /nf/auth/ and redirect to the logon page (/logon/LogonPoint/...)
+  without an Origin header (302 to /vpn/index.html with NSC_VPNERR=4001),
+  so the flow sends one and loads /vpn/index.html first like a browser.
+- nfactor: gateways with the RfWebUI theme (/logon/LogonPoint/...) use the
+  nFactor protocol under /p/u/. On these gateways /cgi/login is dead and
+  just bounces to /vpn/index.html with NSC_VPNERR=4001, so in auto mode a
+  rejected classic login falls back to nFactor. The endpoints and the
+  request/response shape below were captured from a real 13.1 gateway
+  (issue #7).
 """
 
 import xml.etree.ElementTree as ET
@@ -31,7 +34,18 @@ AUTH_MODES = [AUTH_MODE_AUTO, AUTH_MODE_CLASSIC, AUTH_MODE_NFACTOR]
 
 SETCLIENT_LOCATION = "/cgi/setclient?wica"
 LOGON_POINT_MARKER = "/logon/LogonPoint"
+LOGON_POINT_PAGE = "/logon/LogonPoint/index.html"
 REDIRECT_CODES = (301, 302, 303, 307)
+
+# nFactor endpoints (RfWebUI theme), captured from a live 13.1 gateway
+NF_REQUIREMENTS_PATH = "/p/u/getAuthenticationRequirements.do"
+NF_DEFAULT_POSTBACK = "/p/u/doAuthentication.do"
+NF_SETCLIENT_PATH = "/p/u/setClient.do"
+NF_ACCEPT = "application/vnd.citrix.authenticateresponse-1+xml, text/xml, */*; q=0.01"
+
+
+class _NotNFactorGateway(Exception):
+    """Internal signal: the gateway does not expose the nFactor endpoints"""
 
 
 def login(session: GatewaySession, auth_mode: str = AUTH_MODE_AUTO) -> str:
@@ -42,7 +56,12 @@ def login(session: GatewaySession, auth_mode: str = AUTH_MODE_AUTO) -> str:
         The flow that was used ('classic' or 'nfactor')
     """
     if auth_mode == AUTH_MODE_NFACTOR:
-        _nfactor_login(session)
+        try:
+            _nfactor_login(session)
+        except _NotNFactorGateway as e:
+            raise GatewayAuthenticationError(
+                "gateway does not expose the nFactor endpoints (try --auth-mode classic)"
+            ) from e
         return AUTH_MODE_NFACTOR
 
     preamble = _browser_preamble(session)
@@ -60,13 +79,18 @@ def login(session: GatewaySession, auth_mode: str = AUTH_MODE_AUTO) -> str:
 
     response = _post_cgi_login(session)
     location = response.headers.get("Location", "")
-    if (
-        auth_mode == AUTH_MODE_AUTO
-        and response.status_code in REDIRECT_CODES
-        and LOGON_POINT_MARKER in location
-    ):
-        _nfactor_login(session)
-        return AUTH_MODE_NFACTOR
+    classic_ok = response.status_code in REDIRECT_CODES and location == SETCLIENT_LOCATION
+
+    # auto: if /cgi/login does not accept us (RfWebUI gateways bounce to
+    # /vpn/index.html with NSC_VPNERR=4001), try the nFactor flow. If the
+    # gateway turns out not to speak nFactor either, report the classic
+    # rejection so the message stays meaningful (e.g. wrong credentials).
+    if not classic_ok and auth_mode == AUTH_MODE_AUTO:
+        try:
+            _nfactor_login(session)
+            return AUTH_MODE_NFACTOR
+        except _NotNFactorGateway:
+            pass
 
     _finish_classic_login(session, response)
     return AUTH_MODE_CLASSIC
@@ -149,28 +173,30 @@ def _finish_classic_login(session: GatewaySession, login_response: requests.Resp
 
 def _nfactor_login(session: GatewaySession) -> None:
     """
-    nFactor flow: fetch the authentication requirements, then post the
-    credentials to the postback URL.
+    nFactor flow (RfWebUI theme): load the logon page, fetch the
+    authentication requirements, post the credentials to the postback URL
+    and finish with setClient.do.
 
-    Endpoint names, field names and the success criterion are reconstructed
-    from the documented nFactor protocol; they still need verification
-    against a live 13.1/14.1 gateway (see issue #7 debug output).
+    Endpoints, field names and the success criterion were captured from a
+    live 13.1 gateway (issue #7).
     """
-    requirements_url = f"{session.base_url}/nf/auth/getAuthenticationRequirements.do"
+    # load the RfWebUI logon page to establish the session cookies
+    session.get(
+        f"{session.base_url}{LOGON_POINT_PAGE}",
+        headers={"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+    )
+
+    requirements_url = f"{session.base_url}{NF_REQUIREMENTS_PATH}"
     response = session.post(
         requirements_url,
         headers={
-            "Accept": "application/xml, text/xml, */*; q=0.01",
+            "Accept": NF_ACCEPT,
             "Content-Length": "0",
             "X-Citrix-IsUsingHTTPS": "Yes",
         },
     )
     if response.status_code == 404:
-        raise GatewayAuthenticationError(
-            f"request to {requirements_url} returned HTTP 404; the gateway does not "
-            "speak the nFactor protocol (wrong auth-mode or invalid credentials on "
-            "a classic gateway)"
-        )
+        raise _NotNFactorGateway()
     if response.status_code >= 300:
         raise UnexpectedResponseError(
             f"request to {requirements_url} failed with HTTP {response.status_code}",
@@ -183,16 +209,13 @@ def _nfactor_login(session: GatewaySession) -> None:
     auth_url = f"{session.base_url}{postback}"
     response = session.post(
         auth_url,
-        headers={
-            "Accept": "application/xml, text/xml, */*; q=0.01",
-            "X-Citrix-IsUsingHTTPS": "Yes",
-        },
+        headers={"Accept": NF_ACCEPT, "X-Citrix-IsUsingHTTPS": "Yes"},
         data={
             "login": session.username,
             "passwd": session.password,
             "savecredentials": "false",
-            "StateContext": state_context,
             "nsg-x1-logon-button": "Log On",
+            "StateContext": state_context,
         },
     )
     if response.status_code >= 300:
@@ -203,6 +226,17 @@ def _nfactor_login(session: GatewaySession) -> None:
         )
 
     _check_authentication_result(session, response.text)
+
+    # tell the gateway which client to use; the resource listing works without
+    # a successful setClient, so failures here are not fatal
+    try:
+        session.post(
+            f"{session.base_url}{NF_SETCLIENT_PATH}",
+            headers={"Accept": NF_ACCEPT, "X-Citrix-IsUsingHTTPS": "Yes"},
+            data={"nsg-setclient": "wica", "StateContext": state_context},
+        )
+    except Exception:
+        pass
 
 
 def _parse_requirements(xml_text: str) -> tuple[str, str]:
@@ -218,7 +252,7 @@ def _parse_requirements(xml_text: str) -> tuple[str, str]:
         ) from e
 
     state_context = _find_text(root, "StateContext") or ""
-    postback = _find_text(root, "PostBack") or "/nf/auth/doAuthentication.do"
+    postback = _find_text(root, "PostBack") or NF_DEFAULT_POSTBACK
 
     credential_types = {
         (element.text or "").lower() for element in root.iter() if _localname(element.tag) == "Type"

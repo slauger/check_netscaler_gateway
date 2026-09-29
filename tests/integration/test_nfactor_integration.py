@@ -26,6 +26,14 @@ class TestNFactorFlow:
         result = run_check(make_session(mock_nfactor_server), auth_mode="nfactor")
         assert result.status == STATE_OK
 
+    def test_auto_falls_back_via_cgi_login(self, mock_nfactor_server):
+        # gateway whose /vpn/index.html does not redirect to the logon point:
+        # auto detection must fall back through the rejected /cgi/login
+        mock_nfactor_server.nfactor_vpn_redirect = False
+        result = run_check(make_session(mock_nfactor_server))
+        assert result.status == STATE_OK
+        assert result.perfdata["resources"]["value"] == 5
+
     def test_wrong_credentials(self, mock_nfactor_server):
         session = make_session(mock_nfactor_server, password="wrong")
         with pytest.raises(GatewayAuthenticationError, match="Incorrect user name or password"):
@@ -42,7 +50,7 @@ class TestNFactorFlow:
             run_check(make_session(mock_nfactor_server))
 
     def test_nfactor_mode_against_classic_gateway(self, mock_classic_server):
-        with pytest.raises(GatewayAuthenticationError, match="404"):
+        with pytest.raises(GatewayAuthenticationError, match="does not expose the nFactor"):
             run_check(make_session(mock_classic_server), auth_mode="nfactor")
 
     def test_broken_resources_json(self, mock_nfactor_server):
