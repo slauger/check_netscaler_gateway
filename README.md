@@ -39,7 +39,7 @@ check_netscaler_gateway -H <hostname> -u <username> -p <password> [-S <store>]
 | `-H, --hostname` | Hostname of the NetScaler Gateway vServer (env: `NETSCALER_GATEWAY_HOST`) |
 | `-u, --username` | Username for the login simulation (env: `NETSCALER_GATEWAY_USER`) |
 | `-p, --password` | Password for the login username (env: `NETSCALER_GATEWAY_PASS`) |
-| `-S, --store` | Name of the store in StoreFront (default: `Store`) |
+| `-S, --store` | Name of the store in StoreFront. Auto detected from the login flow when omitted (falls back to `Store`) |
 | `-w, --warning` | Warning threshold: minimum number of expected applications |
 | `-c, --critical` | Critical threshold: minimum number of expected applications |
 | `-t, --timeout` | Request timeout in seconds (default: 15) |

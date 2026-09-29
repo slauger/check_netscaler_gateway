@@ -22,7 +22,7 @@ class TestParser:
         parser = create_parser()
         args = parser.parse_args(["-H", "gw.example.com", "-u", "user", "-p", "pass"])
         assert args.hostname == "gw.example.com"
-        assert args.store == "Store"
+        assert args.store is None
         assert args.timeout == 15
         assert args.auth_mode == "auto"
         assert args.verify is False

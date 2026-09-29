@@ -15,6 +15,7 @@ Two flows exist in the wild:
   (issue #7).
 """
 
+import re
 import xml.etree.ElementTree as ET
 from typing import Optional
 
@@ -42,6 +43,10 @@ NF_REQUIREMENTS_PATH = "/p/u/getAuthenticationRequirements.do"
 NF_DEFAULT_POSTBACK = "/p/u/doAuthentication.do"
 NF_SETCLIENT_PATH = "/p/u/setClient.do"
 NF_ACCEPT = "application/vnd.citrix.authenticateresponse-1+xml, text/xml, */*; q=0.01"
+
+# the store path the gateway redirects to is announced in the setClient.do
+# response (e.g. /Citrix/StoreWeb)
+_STORE_PATH_RE = re.compile(r"/Citrix/([A-Za-z0-9_]+)Web")
 
 
 class _NotNFactorGateway(Exception):
@@ -228,15 +233,22 @@ def _nfactor_login(session: GatewaySession) -> None:
     _check_authentication_result(session, response.text)
 
     # tell the gateway which client to use; the resource listing works without
-    # a successful setClient, so failures here are not fatal
+    # a successful setClient, so failures here are not fatal. The response also
+    # announces the StoreFront store path, which we use to auto detect the
+    # store unless one was given explicitly.
     try:
-        session.post(
+        response = session.post(
             f"{session.base_url}{NF_SETCLIENT_PATH}",
             headers={"Accept": NF_ACCEPT, "X-Citrix-IsUsingHTTPS": "Yes"},
             data={"nsg-setclient": "wica", "StateContext": state_context},
         )
     except Exception:
-        pass
+        return
+
+    if not session.store_explicit:
+        match = _STORE_PATH_RE.search(response.text or "")
+        if match:
+            session.set_store(match.group(1))
 
 
 def _parse_requirements(xml_text: str) -> tuple[str, str]:

@@ -114,6 +114,8 @@ class MockGatewayServer:
         # point; set this False to force auto detection through the /cgi/login
         # fallback instead of the preamble redirect
         self.nfactor_vpn_redirect = True
+        # store path announced by setClient.do; defaults to the served store
+        self.announced_store: Optional[str] = None
 
         self.app = Flask(__name__)
         self.fixtures_dir = Path(__file__).parent / "fixtures"
@@ -208,8 +210,17 @@ class MockGatewayServer:
         def nf_setclient():
             if self.mode != MODE_NFACTOR or not self._authenticated():
                 return Response(status=403)
+            # the real response announces the StoreFront store path
+            announced = self.announced_store or self.store
+            body = (
+                '<?xml version="1.0" encoding="UTF-8"?>'
+                '<AuthenticateResponse xmlns="http://citrix.com/authentication/response/1">'
+                "<Status>success</Status><Result>success</Result>"
+                f"<Result-URL>/Citrix/{announced}Web/</Result-URL>"
+                "</AuthenticateResponse>"
+            )
             return Response(
-                SUCCESS_XML,
+                body,
                 status=200,
                 mimetype="application/vnd.citrix.authenticateresponse-1+xml",
             )

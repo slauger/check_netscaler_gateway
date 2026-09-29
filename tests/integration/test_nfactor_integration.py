@@ -34,6 +34,25 @@ class TestNFactorFlow:
         assert result.status == STATE_OK
         assert result.perfdata["resources"]["value"] == 5
 
+    def test_store_auto_detection(self, mock_nfactor_server):
+        # without an explicit -S the store is discovered from setClient.do
+        mock_nfactor_server.store = "Prod01"
+        session = make_session(mock_nfactor_server, store=None)
+        result = run_check(session)
+        assert result.status == STATE_OK
+        assert session.store == "Prod01"
+        assert session.store_url.endswith("/Citrix/Prod01Web")
+
+    def test_explicit_store_is_not_overridden(self, mock_nfactor_server):
+        # an explicit -S wins over auto detection: the gateway announces a
+        # different store path, but the session keeps the one that was given
+        mock_nfactor_server.store = "Prod01"
+        mock_nfactor_server.announced_store = "Ghost99"
+        session = make_session(mock_nfactor_server, store="Prod01")
+        result = run_check(session)
+        assert result.status == STATE_OK
+        assert session.store == "Prod01"
+
     def test_wrong_credentials(self, mock_nfactor_server):
         session = make_session(mock_nfactor_server, password="wrong")
         with pytest.raises(GatewayAuthenticationError, match="Incorrect user name or password"):

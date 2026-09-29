@@ -66,8 +66,11 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-S",
         "--store",
-        default=DEFAULT_STORE,
-        help=f"Name of the store in StoreFront (default: {DEFAULT_STORE})",
+        default=None,
+        help=(
+            "Name of the store in StoreFront (URL becomes /Citrix/<store>Web). "
+            f"Auto detected from the login flow when omitted, falling back to '{DEFAULT_STORE}'"
+        ),
     )
     parser.add_argument(
         "-w",

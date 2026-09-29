@@ -38,7 +38,7 @@ class GatewaySession:
         hostname: str,
         username: str,
         password: str,
-        store: str = "Store",
+        store: Optional[str] = None,
         timeout: int = 15,
         verify: Union[bool, str] = False,
         verbose: bool = False,
@@ -53,7 +53,9 @@ class GatewaySession:
             hostname: Hostname of the NetScaler Gateway vServer
             username: Username for the login simulation
             password: Password for the login simulation
-            store: StoreFront store name (URL becomes /Citrix/<store>Web)
+            store: StoreFront store name (URL becomes /Citrix/<store>Web).
+                None enables auto detection of the store from the login flow,
+                falling back to "Store".
             timeout: Request timeout in seconds
             verify: Verify TLS certificates (bool or path to CA bundle)
             verbose: Print one line per request to stderr
@@ -64,11 +66,15 @@ class GatewaySession:
         self.hostname = hostname
         self.username = username
         self.password = password
-        self.store = store
         self.timeout = timeout
         self.verify = verify
         self.verbose = verbose
         self.debug = debug
+
+        # an explicit store is kept as-is; without one we auto detect it and
+        # fall back to "Store"
+        self.store_explicit = store is not None
+        self.store = store or "Store"
 
         if ssl and not verify:
             urllib3.disable_warnings(InsecureRequestWarning)
@@ -79,10 +85,15 @@ class GatewaySession:
         else:
             netloc = hostname
         self.base_url = f"{protocol}://{netloc}"
-        self.store_url = f"{self.base_url}/Citrix/{store}Web"
+        self.store_url = f"{self.base_url}/Citrix/{self.store}Web"
 
         self.session = requests.Session()
         self.session.headers["User-Agent"] = USER_AGENT
+
+    def set_store(self, store: str) -> None:
+        """Point the session at a different StoreFront store"""
+        self.store = store
+        self.store_url = f"{self.base_url}/Citrix/{store}Web"
 
     def request(self, method: str, url: str, **kwargs) -> requests.Response:
         """
