@@ -100,11 +100,14 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest]
         include:
           - os: ubuntu-latest
-            artifact_name: check_netscaler_gateway-linux
-            asset_name: check_netscaler_gateway-linux
+            artifact_name: check_netscaler_gateway-linux-amd64
+            asset_name: check_netscaler_gateway-linux-amd64
+          - os: ubuntu-24.04-arm
+            artifact_name: check_netscaler_gateway-linux-arm64
+            asset_name: check_netscaler_gateway-linux-arm64
           - os: windows-latest
             artifact_name: check_netscaler_gateway.exe
             asset_name: check_netscaler_gateway-windows.exe
@@ -221,8 +224,10 @@ jobs:
         run: |
           VERSION=${{ steps.semantic.outputs.version }}
           gh release upload v${VERSION} \
-            artifacts/check_netscaler_gateway-linux/check_netscaler_gateway-linux \
-            artifacts/check_netscaler_gateway-linux/check_netscaler_gateway-linux.sha256sum \
+            artifacts/check_netscaler_gateway-linux-amd64/check_netscaler_gateway-linux-amd64 \
+            artifacts/check_netscaler_gateway-linux-amd64/check_netscaler_gateway-linux-amd64.sha256sum \
+            artifacts/check_netscaler_gateway-linux-arm64/check_netscaler_gateway-linux-arm64 \
+            artifacts/check_netscaler_gateway-linux-arm64/check_netscaler_gateway-linux-arm64.sha256sum \
             artifacts/check_netscaler_gateway.exe/check_netscaler_gateway.exe \
             artifacts/check_netscaler_gateway.exe/check_netscaler_gateway.exe.sha256sum \
             artifacts/check_netscaler_gateway-macos/check_netscaler_gateway-macos \

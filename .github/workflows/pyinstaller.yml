@@ -51,11 +51,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest]
         include:
           - os: ubuntu-latest
-            artifact_name: check_netscaler_gateway-linux
-            asset_name: check_netscaler_gateway-linux
+            artifact_name: check_netscaler_gateway-linux-amd64
+            asset_name: check_netscaler_gateway-linux-amd64
+          - os: ubuntu-24.04-arm
+            artifact_name: check_netscaler_gateway-linux-arm64
+            asset_name: check_netscaler_gateway-linux-arm64
           - os: windows-latest
             artifact_name: check_netscaler_gateway.exe
             asset_name: check_netscaler_gateway-windows.exe
