@@ -5,6 +5,6 @@ Simulates a full end-user login through a NetScaler Gateway vServer and
 StoreFront and checks if there are any resources available.
 """
 
-__version__ = "1.2.0"
+__version__ = "2.0.0"
 __author__ = "Simon Lauger"
 __license__ = "Apache-2.0"
