@@ -1,0 +1,9 @@
+{
+  "resources": [
+    {"name": "Admin Desktop", "resourcetype": "Citrix.MPS.Desktop"},
+    {"name": "CAD Desktop", "resourcetype": "Citrix.MPS.Desktop"},
+    {"name": "Calculator", "resourcetype": "Citrix.MPS.Application"},
+    {"name": "HDX Desktop", "resourcetype": "Citrix.MPS.Desktop"},
+    {"name": "Windows 8 Desktop", "resourcetype": "Citrix.MPS.Desktop"}
+  ]
+}
