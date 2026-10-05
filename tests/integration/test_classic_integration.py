@@ -77,6 +77,21 @@ class TestClassicFlow:
         with pytest.raises(CsrfTokenError):
             run_check(make_session(mock_classic_server))
 
+    def test_login_ok_with_empty_resource_list(self, mock_classic_server):
+        mock_classic_server.resources = []
+        result = run_check(make_session(mock_classic_server))
+        assert result.status == STATE_OK
+        assert result.perfdata["resources"]["value"] == 0
+        assert "0 applications available" in result.message
+
+    def test_login_ok_without_resources_element(self, mock_classic_server):
+        # StoreFront may omit the resources element entirely for a user with
+        # no published apps; a successful login must still be OK (issue #7)
+        mock_classic_server.omit_resources_element = True
+        result = run_check(make_session(mock_classic_server))
+        assert result.status == STATE_OK
+        assert result.perfdata["resources"]["value"] == 0
+
     def test_logout_failure_is_warning(self, mock_classic_server):
         mock_classic_server.fail_logout = True
         result = run_check(make_session(mock_classic_server))
