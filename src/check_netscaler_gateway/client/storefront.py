@@ -62,13 +62,9 @@ def list_resources(session: GatewaySession) -> List[str]:
             status_code=response.status_code,
         ) from e
 
-    resources = payload.get("resources")
-    if resources is None:
-        raise UnexpectedResponseError(
-            f"request to {session.store_url}/Resources/List returned no resources element",
-            url=f"{session.store_url}/Resources/List",
-            status_code=response.status_code,
-        )
+    # a successful login for a user without published apps returns an empty
+    # or missing resources element; that is zero resources, not an error
+    resources = payload.get("resources") or []
 
     return [resource["name"] for resource in resources if "name" in resource]
 

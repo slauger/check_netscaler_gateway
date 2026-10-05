@@ -42,11 +42,26 @@ class TestRunCheck:
         result = check.run_check(session=None, warning=3, critical=2)
         assert result.status == STATE_OK
 
-    def test_zero_resources(self, patched_flow):
+    def test_zero_resources_without_threshold_is_ok(self, patched_flow):
+        # verifying a successful login for a user without apps must not alert
+        patched_flow["resources"] = []
+        result = check.run_check(session=None)
+        assert result.status == STATE_OK
+        assert result.perfdata["resources"]["value"] == 0
+        assert "0 applications available" in result.message
+
+    def test_zero_resources_with_threshold(self, patched_flow):
         patched_flow["resources"] = []
         result = check.run_check(session=None, critical=1)
         assert result.status == STATE_CRITICAL
         assert result.perfdata["resources"]["value"] == 0
+
+    def test_critical_zero_is_a_real_threshold(self, patched_flow):
+        # -c 0 means "critical if below 0", which never triggers, not "ignore"
+        patched_flow["resources"] = []
+        result = check.run_check(session=None, critical=0)
+        assert result.status == STATE_OK
+        assert result.perfdata["resources"]["crit"] == "0"
 
     def test_logout_failure_is_warning(self, patched_flow):
         patched_flow["logout_ok"] = False

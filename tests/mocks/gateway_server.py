@@ -109,6 +109,7 @@ class MockGatewayServer:
         self.fail_logout = False
         self.multifactor = False
         self.broken_resources_json = False
+        self.omit_resources_element = False
         self.resources: Optional[list] = None
         # some nFactor gateways do not redirect /vpn/index.html to the logon
         # point; set this False to force auto detection through the /cgi/login
@@ -252,6 +253,10 @@ class MockGatewayServer:
                 return Response(status=403)
             if self.broken_resources_json:
                 return Response("this is not json", status=200, mimetype="application/json")
+            if self.omit_resources_element:
+                # a user without published apps may get a payload with no
+                # resources element at all
+                return Response("{}", status=200, mimetype="application/json")
             if self.resources is not None:
                 payload = {"resources": self.resources}
             else:
