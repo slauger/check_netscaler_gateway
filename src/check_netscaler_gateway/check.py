@@ -51,19 +51,22 @@ def run_check(
     perfdata = {
         "resources": {
             "value": count,
-            "warn": str(warning) if warning else "",
-            "crit": str(critical) if critical else "",
+            "warn": str(warning) if warning is not None else "",
+            "crit": str(critical) if critical is not None else "",
             "min": "0",
         }
     }
 
-    messages = [f"{name};" for name in resources]
+    if resources:
+        messages = [f"{name};" for name in resources]
+    else:
+        messages = ["0 applications available"]
     status = STATE_OK
 
-    if critical and count < critical:
+    if critical is not None and count < critical:
         status = STATE_CRITICAL
         messages.append(f"Only {count} applications found, expected at least {critical}")
-    elif warning and count < warning:
+    elif warning is not None and count < warning:
         status = STATE_WARNING
         messages.append(f"Only {count} applications found, expected at least {warning}")
 
