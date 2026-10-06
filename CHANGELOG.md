@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## v2.0.1 (2026-10-06)
+
+### Bug Fixes
+
+* treat a successful login with zero resources as OK
 ## v2.0.0 (2026-10-02)
 
 ## v2.0.0-rc.1 (2026-09-29)
